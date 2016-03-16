@@ -1,0 +1,186 @@
+#! /usr/bin/perl -w
+
+use strict;
+use File::Temp qw/tempfile/;
+use Getopt::Long;
+use Pod::Usage;
+use MIME::Parser;
+use MIME::Entity;
+use Data::ICal;
+use DateTime::Format::ICal;
+
+use YAML qw/LoadFile/;
+
+
+######################################################
+# Configuration
+
+# Owncloud URL and user (password is in .netrc, used by
+# cadaver)
+my $cfg = LoadFile("$ENV{HOME}/.ics_toolsrc");
+my $oc_server = $cfg->{oc_server};
+my $oc_user = $cfg->{oc_user};
+my $from_email = $cfg->{from_email};
+
+
+######################################################
+# Command line parsing
+
+=head1 NAME
+
+ics_process -- Process e-mail that contains iCal parts
+
+=head1 SYNOPSIS
+
+ics_process [--accept|--decline|--display] < multipart_email_text
+
+=head1 DESCRIPTION
+
+ics_process is designed to accept multi-part MIME emails,
+extract iCal invitations (RFC5546), and reply to them with
+an accept or decline e-mail. Additionaly, it submits
+accepted meetings to a CalDAV server.
+
+This makes it essentially possible to work with invitations
+and keep your calendar automatically synchronised, directly
+from Mutt.
+
+=head2 Setup
+
+=over 4
+
+=item Set up CalDAV and user in the configuration section of
+the script.
+
+=item Install cadaver, and set its .netrc so that it can
+connect to your CalDAV server without prompting for
+passwords. If you have your own CA, add your CA certificate
+to /usr/local/share/ca-certificates (with a .crt extension)
+then run `update-ca-certificates`.
+
+=item Add the following macros to your .muttrc:
+
+    macro pager A "|ics_process --accept"
+    macro pager D "|ics_process --decline"
+    macro pager S "|ics_process --display"
+
+=back
+
+Now, when viewing an e-mail that contains an invitation,
+pressing 'A' will add the event in your calendar and send an
+acceptation e-mail, while pressing 'D' will send a decline
+e-mail.
+
+=cut
+
+my ($param_accept, $param_decline, $param_display, $help);
+GetOptions(
+    'accept' => \$param_accept,
+    'decline' => \$param_decline,
+    'display' => \$param_display,
+) or die pod2usage();
+die pod2usage(-verbose => 2) if defined $help or defined $param_accept and defined $param_decline or not defined $param_accept and not defined $param_decline and not defined $param_display;
+
+
+######################################################
+# Submits a ICS file to owncloud
+sub oc_submit {
+    my ($data) = @_;
+    my ($fh, $filename) = tempfile("/tmp/ics_process_XXXXXX", UNLINK => 1);
+    print "posting $filename\n";
+    print $fh $data;
+`cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
+put $filename
+quit
+EOC`;
+}
+
+######################################################
+# Gobble up entire e-mail from stdin
+
+my $parser = new MIME::Parser;
+my $input = $parser->parse(\*STDIN);
+
+my $reply_to;
+
+my ($accept, $entity, $ical_data);
+
+my @parts = $input->parts;
+# If there are no parts, process the mail itself, as it may
+# be a text/calendar.
+push @parts, $input unless @parts;
+
+foreach my $part (@parts) {
+    my $type = $part->effective_type;
+
+    if ($type =~ /multipart/) {
+        push @parts, $part->parts;
+        next;
+    }
+
+    if ($type eq "text/calendar" or $type =~ /applica.*\/ics/) {
+        my $body = $part->bodyhandle or die "Unable to open calendar part\n";
+        $ical_data = $body->as_string;
+        last;
+    }
+}
+
+if ($param_display) {
+    my $ical = Data::ICal->new(data => $ical_data);
+    foreach my $entry (@{$ical->entries}) {
+        my $start = $entry->property('dtstart');
+        next unless defined $start;
+        $start = DateTime::Format::ICal->parse_datetime($start->[0]->value);
+        $start = $start->strftime("%a %d %B %H:%M");
+        my $end = $entry->property('dtend');
+        $end = DateTime::Format::ICal->parse_datetime($end->[0]->value);
+        $end = $end->strftime("%a %d %B %H:%M");
+
+        my $organiser = defined $entry->property('organiser') ? $entry->property('organizer')->[0]->value : undef;
+        my $location = defined $entry->property('location') ? $entry->property('location')->[0]->value : undef;
+        my $attendees = $entry->property('attendee'); 
+        my $attendee = join "\n\t  ", map { $_->value } @$attendees;
+        my $subject = $entry->property('summary')->[0]->value;
+        my $data = $entry->property('description')->[0]->value;
+        print <<EOF;
+Organiser: $organiser
+Attendee: $attendee
+Subject: $subject
+Location: $location
+Start: $start
+Ends:  $end
+
+$data
+EOF
+    }
+}
+
+# If accept or decline, send appropriate e-mail
+if ($param_accept or $param_decline) {
+    $accept = $param_accept;
+    my $output = MIME::Entity->build(
+        From => $from_email,
+        To => $input->get('From'),
+        Subject => (($accept ? "Accepted: ": "Declined: ").$input->get('Subject')),
+        Data => [ "" ],
+    );
+
+    my $action = $accept ? "ACCEPTED" : "DECLINED";
+    $ical_data =~ s/NEEDS-ACTION/$action/;
+    $ical_data =~ s/METHOD:REQUEST/METHOD:REPLY/;
+    ($reply_to) = $ical_data =~ /MAILTO:(.*)/;
+    $output->attach(
+        Type => 'text/calendar',
+        Encoding => 'base64',
+        Data => $ical_data,
+    );
+
+    $output->replace('To', $reply_to) if defined $reply_to;
+    $output->send;
+}
+
+# Submit to calendar
+if ($accept) {
+    oc_submit $ical_data;
+}
+

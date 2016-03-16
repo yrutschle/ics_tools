@@ -1,0 +1,97 @@
+#! /usr/bin/perl -w
+
+# Create a new ICS event
+
+use Getopt::Long;
+use Pod::Usage;
+use Data::ICal;
+use Data::UUID;
+
+use DateTime::Format::Strptime;
+use DateTime::Format::ICal;
+
+
+=head1 NAME
+
+ ics_create -- Creates an iCal file
+
+=head1 SYNOPSIS
+
+ ics_create --begin "22/11/2015 20:00" --end "22/11/2015 23:00" -s "Birthday party" --location "Home" <<EOF
+You're all invited to a birthday party!
+EOF
+
+=cut
+
+my $ical_parser = DateTime::Format::ICal->new;
+my $parser = DateTime::Format::Strptime->new(
+    pattern => '%d/%m/%Y %H:%M',
+    on_error => 'undef',
+);
+
+
+
+my ($param_begin, $param_end, $param_subject, $param_location, $help);
+GetOptions(
+    'begin=s' => \$param_begin,
+    'end=s' => \$param_end,
+    'subject=s' => \$param_subject,
+    'location=s' => \$param_location,
+    'help' => \$help,
+) or die pod2usage();
+die pod2usage(-verbose => 2) if defined $help;
+
+################################################################################
+# If we're missing fields, request them from stdin
+
+sub prompt_date {
+    my ($prompt) = @_;
+    my $date;
+    do {
+        print STDERR "$prompt";
+        my $in = <>;
+        $date = $parser->parse_datetime($in);
+        warn "Illegal date\n" if not defined $date;
+    } until defined $date;
+    return $ical_parser->format_datetime($date);
+}
+
+$ical_begin = prompt_date "Event start date (dd/mm/yy hh:mm): ";
+$ical_end = prompt_date "Event end date (dd/mm/yy hh:mm): ";
+
+if (not defined $param_subject) {
+    print STDERR "Subject: ";
+    $param_subject = <>;
+}
+
+if (not defined $param_location) {
+    print STDERR "Location: ";
+    $param_location = <>;
+}
+
+################################################################################
+# Consolidates the rest of stdin to description
+my $description = "";
+while (<>) {
+    $description .= $_;
+}
+
+################################################################################
+# Create ICal date
+
+my $ug = Data::UUID->new;
+
+my $ical = Data::ICal->new();
+use Data::ICal::Entry::Event;
+my $event = Data::ICal::Entry::Event->new();
+$event->add_properties(
+    summary => $param_subject,
+    description => $description,
+    dtstart => $ical_begin,
+    dtend => $ical_end,
+    location => $param_location,
+    uid => $ug->to_string($ug->create()),
+);
+$ical->add_entry($event);
+
+print $ical->as_string;

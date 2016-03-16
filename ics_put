@@ -1,0 +1,116 @@
+#! /usr/bin/perl -w
+
+# Simply uploads a ICS to a calendar
+
+use strict;
+use File::Temp qw/tempfile/;
+use Getopt::Long;
+use Pod::Usage;
+use Data::UUID;
+use YAML qw/LoadFile/;
+
+
+######################################################
+# Configuration
+
+# Owncloud URL and user (password is in .netrc, used by
+# cadaver)
+my $cfg = LoadFile("$ENV{HOME}/.ics_toolsrc");
+my $oc_server = $cfg->{oc_server};
+my $oc_user = $cfg->{oc_user};
+
+######################################################
+# Command line parsing
+
+=head1 NAME
+
+ics_put -- Imports an ICS calenadr into Owncloud
+
+=head1 SYNOPSIS
+
+ics_put <event.ics>
+
+=head1 DESCRIPTION
+
+ics_put splits an ICS file into atomic events, names the
+files according to the UUID of the event, then uploads them
+all to an Owncloud calendar.
+
+
+=cut
+
+my ($verbose, $help);
+GetOptions(
+    'verbose' => \$verbose,
+#    'accept' => \$param_accept,
+#    'decline' => \$param_decline,
+#    'display' => \$param_display,
+) or die pod2usage();
+die pod2usage(-verbose => 2) if defined $help;
+
+
+# Split a large VCALENDAR into unit VCALENDAR containing
+# only one VEVENT (owncloud only accepts one event per file)
+# Input: absolute path to basename for new files ,  input ICS
+# Output: list of split files
+sub ics_split {
+    my ($in_file) = @_;
+
+    my @out;
+    my $cnt = 1;
+
+    open my $in, $in_file or die "$in_file: $!\n";
+
+    while (<$in>) {
+        chomp;
+        last if /^BEGIN:VEVENT/;
+    }
+    my $data = "BEGIN:VEVENT\n";
+    while (<$in>) {
+        chomp;
+        if (/^END:VEVENT/) {
+            chop $data;
+            $data =~ /^UID:(.*)/m;
+            my $uid = $1;
+            chop $uid;
+
+            my $filename = "/tmp/$uid.ics";
+            open my $fh, "> $filename" or die "$filename: $!\n";
+            $cnt++;
+
+            print $fh <<EOF;
+BEGIN:VCALENDAR
+PRODID:ics_split
+VERSION:2.0
+$data
+END:VEVENT
+END:VCALENDAR
+EOF
+
+            push @out, $filename;
+            $data = "";
+        } else {
+            $data .= "$_\n";
+        }
+    }
+return @out;
+}
+
+######################################################
+# Submits a ICS file to owncloud
+
+my $filename = shift;
+
+my @files = ics_split $filename;
+
+for my $f (@files) {
+    warn "Importing $f\n" if $verbose;
+my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
+put $f
+quit
+EOC`;
+warn $out if $verbose;
+unlink $f or die "$f: $!\n";
+}
+
+

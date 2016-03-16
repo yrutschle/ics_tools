@@ -1,0 +1,11 @@
+# ics_tools configuration (WebDAV password is in .netrc,
+# used by cadaver)
+
+# Root URL of the Owncloud server (should work with all
+# WebDAV servers)
+oc_server: https://owncloud.example.net/owncloud
+oc_user: john
+
+# E-mail address to use as source when replying to
+# invitations
+from_email: john@example.net
