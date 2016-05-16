@@ -118,7 +118,9 @@ foreach my $part (@parts) {
         next;
     }
 
-    if ($type eq "text/calendar" or $type =~ /applica.*\/ics/) {
+    # Some applications send ICS as # 'application/octet-stream'... fall back on attachement filename 
+    my $filename = $part->head->recommended_filename;
+    if ($type eq "text/calendar" or $type =~ /applica.*\/ics/ or $filename =~ /ics$/) {
         my $body = $part->bodyhandle or die "Unable to open calendar part\n";
         $ical_data = $body->as_string;
         last;
