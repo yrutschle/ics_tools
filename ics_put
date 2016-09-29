@@ -99,18 +99,22 @@ return @out;
 ######################################################
 # Submits a ICS file to owncloud
 
-my $filename = shift;
+my $filename;
 
-my @files = ics_split $filename;
+while ($filename = shift) {
+    warn "Splitting $filename\n" if $verbose;
 
-for my $f (@files) {
-    warn "Importing $f\n" if $verbose;
-my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
-put $f
-quit
-EOC`;
-warn $out if $verbose;
-unlink $f or die "$f: $!\n";
+    my @files = ics_split $filename;
+
+    for my $f (@files) {
+        warn "Importing $f\n" if $verbose;
+        my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
+        put $f
+        quit
+        EOC`;
+        warn $out if $verbose;
+        unlink $f or die "$f: $!\n";
+    }
+
 }
-
 
