@@ -113,10 +113,16 @@ push @parts, $input unless @parts;
 foreach my $part (@parts) {
     my $type = $part->effective_type;
 
-    if ($type =~ /multipart/) {
+    # If this envelope contains parts, process parts instead
+    # (This goes recursively searching for text/calendar or
+    # ICS attachements).
+    # We can't just rely on "multipart" MIME as other
+    # classes may be multipart, e.g. "message/rfc722"
+    if ($part->parts) {
         push @parts, $part->parts;
         next;
     }
+
 
     # Some applications send ICS as # 'application/octet-stream'... fall back on attachement filename 
     my $filename = $part->head->recommended_filename // "";
