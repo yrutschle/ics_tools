@@ -24,11 +24,11 @@ my $oc_user = $cfg->{oc_user};
 
 =head1 NAME
 
-ics_put -- Imports an ICS calenadr into Owncloud
+ics_put -- Imports one or several ICS calendar into Owncloud
 
 =head1 SYNOPSIS
 
-ics_put <event.ics>
+ics_put <event.ics> [<event2.ics> ...]
 
 =head1 DESCRIPTION
 
@@ -72,7 +72,13 @@ sub ics_split {
             chop $data;
             $data =~ /^UID:(.*)/m;
             my $uid = $1;
-            chop $uid;
+            if (defined $uid) {
+                chop $uid;
+            } else {
+                my $ug = new Data::UUID;
+                $uid = $ug->create_str();
+                $data .= "\nUID: $uid\n";
+            }
 
             my $filename = "/tmp/$uid.ics";
             open my $fh, "> $filename" or die "$filename: $!\n";
@@ -112,7 +118,7 @@ while ($filename = shift) {
         put $f
         quit
         EOC`;
-        warn $out if $verbose;
+        warn $out if $verbose or $out =~ /400/; # Owncloud fails with 400 bad request
         unlink $f or die "$f: $!\n";
     }
 
