@@ -28,25 +28,45 @@ ics_put -- Imports one or several ICS calendar into Owncloud
 
 =head1 SYNOPSIS
 
-ics_put <event.ics> [<event2.ics> ...]
+ics_put [[--replace] --calendar=my_cal] <event.ics> [<event2.ics> ...]
 
 =head1 DESCRIPTION
 
-ics_put splits an ICS file into atomic events, names the
+I<ics_put> splits an ICS file into atomic events, names the
 files according to the UUID of the event, then uploads them
 all to an Owncloud calendar.
 
+=head1 OPTIONS
+
+=over 4
+
+=item I<--calendar>
+
+Specifies the calendar in which to add the events. Defaults
+to 'personal', which is the default calendar name in
+Owncloud.
+
+=item I<--replace>
+
+Removes the contents of the calendar before importing the
+events. For safety, you must specify I<--calendar> to use
+this option.
+
+=back
 
 =cut
 
-my ($verbose, $help);
+my ($verbose, $param_calendar, $param_replace, $help);
 GetOptions(
     'verbose' => \$verbose,
-#    'accept' => \$param_accept,
-#    'decline' => \$param_decline,
-#    'display' => \$param_display,
+    'calendar=s' => \$param_calendar,
+    'replace' => \$param_replace,
 ) or die pod2usage();
 die pod2usage(-verbose => 2) if defined $help;
+
+die "Cowardly refusing to destroy unspecified calendar\n" if defined $param_replace and not defined $param_calendar;
+
+$param_calendar //= "personal";
 
 
 # Split a large VCALENDAR into unit VCALENDAR containing
@@ -103,6 +123,29 @@ return @out;
 }
 
 ######################################################
+sub cadaver_cmd
+{
+    my ($cmd) = @_;
+
+    my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/$param_calendar <<EOC
+    $cmd`;
+    warn $out if $verbose or $out =~ /400/; # Owncloud fails with 400 bad request
+}
+
+######################################################
+# Erase calendar if needed
+
+if ($param_replace) {
+    warn "Removing events in $param_calendar\n" if $verbose;
+
+    cadaver_cmd(<<EOC
+rm * 
+quit
+EOC
+);
+}
+
+######################################################
 # Submits a ICS file to owncloud
 
 my $filename;
@@ -114,11 +157,11 @@ while ($filename = shift) {
 
     for my $f (@files) {
         warn "Importing $f\n" if $verbose;
-        my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
+        cadaver_cmd(<<EOC
         put $f
         quit
-        EOC`;
-        warn $out if $verbose or $out =~ /400/; # Owncloud fails with 400 bad request
+EOC
+    );
         unlink $f or die "$f: $!\n";
     }
 
