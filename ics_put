@@ -28,7 +28,7 @@ ics_put -- Imports one or several ICS calendar into Owncloud
 
 =head1 SYNOPSIS
 
-ics_put [[--replace] --calendar=my_cal] <event.ics> [<event2.ics> ...]
+ics_put [--verbose] [[--replace] --calendar=my_cal] <event.ics> [<event2.ics> ...]
 
 =head1 DESCRIPTION
 
@@ -61,6 +61,7 @@ GetOptions(
     'verbose' => \$verbose,
     'calendar=s' => \$param_calendar,
     'replace' => \$param_replace,
+    'help' => \$help,
 ) or die pod2usage();
 die pod2usage(-verbose => 2) if defined $help;
 

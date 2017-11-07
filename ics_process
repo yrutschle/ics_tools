@@ -89,6 +89,7 @@ sub oc_submit {
     my ($fh, $filename) = tempfile("/tmp/ics_process_XXXXXX", UNLINK => 1);
     print "posting $filename\n";
     print $fh $data;
+    close $fh;
 `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/personal <<EOC
 put $filename
 quit
