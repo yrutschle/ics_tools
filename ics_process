@@ -32,7 +32,8 @@ ics_process -- Process e-mail that contains iCal parts
 
 =head1 SYNOPSIS
 
-ics_process [--accept|--decline|--display] < multipart_email_text
+ ics_process [--accept|--decline|--display] < multipart_email_text
+ ics_process --display < event.ics
 
 =head1 DESCRIPTION
 
@@ -45,12 +46,13 @@ This makes it essentially possible to work with invitations
 and keep your calendar automatically synchronised, directly
 from Mutt.
 
+Additionally it can display plain ICS files.
+
 =head2 Setup
 
 =over 4
 
-=item Set up CalDAV and user in the configuration section of
-the script.
+=item Set up CalDAV and user in the configuration section of the script.
 
 =item Install cadaver, and set its .netrc so that it can
 connect to your CalDAV server without prompting for
@@ -97,45 +99,10 @@ EOC`;
 }
 
 ######################################################
-# Gobble up entire e-mail from stdin
+sub ics_display {
+    my ($data) = @_;
 
-my $parser = new MIME::Parser;
-my $input = $parser->parse(\*STDIN);
-
-my $reply_to;
-
-my ($accept, $entity, $ical_data);
-
-my @parts = $input->parts;
-# If there are no parts, process the mail itself, as it may
-# be a text/calendar.
-push @parts, $input unless @parts;
-
-foreach my $part (@parts) {
-    my $type = $part->effective_type;
-
-    # If this envelope contains parts, process parts instead
-    # (This goes recursively searching for text/calendar or
-    # ICS attachements).
-    # We can't just rely on "multipart" MIME as other
-    # classes may be multipart, e.g. "message/rfc722"
-    if ($part->parts) {
-        push @parts, $part->parts;
-        next;
-    }
-
-
-    # Some applications send ICS as # 'application/octet-stream'... fall back on attachement filename 
-    my $filename = $part->head->recommended_filename // "";
-    if ($type eq "text/calendar" or $type =~ /applica.*\/ics/ or $filename =~ /ics$/) {
-        my $body = $part->bodyhandle or die "Unable to open calendar part\n";
-        $ical_data = $body->as_string;
-        last;
-    }
-}
-
-if ($param_display) {
-    my $ical = Data::ICal->new(data => $ical_data);
+    my $ical = Data::ICal->new(data => $data);
     foreach my $entry (@{$ical->entries}) {
         my $start = $entry->property('dtstart');
         next unless defined $start;
@@ -145,8 +112,8 @@ if ($param_display) {
         $end = DateTime::Format::ICal->parse_datetime($end->[0]->value);
         $end = $end->strftime("%a %d %B %H:%M");
 
-        my $organiser = defined $entry->property('organiser') ? $entry->property('organizer')->[0]->value : undef;
-        my $location = defined $entry->property('location') ? $entry->property('location')->[0]->value : undef;
+        my $organiser = defined $entry->property('organiser') ? $entry->property('organizer')->[0]->value : "";
+        my $location = defined $entry->property('location') ? $entry->property('location')->[0]->value : "";
         my $attendees = $entry->property('attendee'); 
         my $attendee = join "\n\t  ", map { $_->value } @$attendees;
         my $subject = $entry->property('summary')->[0]->value;
@@ -163,6 +130,61 @@ $data
 EOF
     }
 }
+
+
+######################################################
+# Gobble up entire input from stdin
+
+my $parser = new MIME::Parser;
+undef $/;
+my $raw_input = <STDIN>;
+
+
+if ($raw_input =~ /^BEGIN:VCALENDAR/) {
+    # Plain ICS file: display and leave
+    ics_display($raw_input);
+    exit(0);
+} 
+
+
+# Try parsing MIME
+my $input = $parser->parse_data($raw_input);
+
+my $reply_to;
+
+my ($accept, $entity, $ical_data);
+
+my @parts = $input->parts;
+# If there are no parts, process the mail itself, as it may
+# be a text/calendar.
+push @parts, $input unless @parts;
+
+if (@parts) {
+    foreach my $part (@parts) {
+        my $type = $part->effective_type;
+
+        # If this envelope contains parts, process parts instead
+        # (This goes recursively searching for text/calendar or
+        # ICS attachements).
+        # We can't just rely on "multipart" MIME as other
+        # classes may be multipart, e.g. "message/rfc722"
+        if ($part->parts) {
+            push @parts, $part->parts;
+            next;
+        }
+
+
+        # Some applications send ICS as # 'application/octet-stream'... fall back on attachement filename 
+        my $filename = $part->head->recommended_filename // "";
+        if ($type eq "text/calendar" or $type =~ /applica.*\/ics/ or $filename =~ /ics$/) {
+            my $body = $part->bodyhandle or die "Unable to open calendar part\n";
+            $ical_data = $body->as_string;
+            last;
+        }
+    }
+} 
+
+ics_display($ical_data) if $param_display;
 
 # If accept or decline, send appropriate e-mail
 if ($param_accept or $param_decline) {
