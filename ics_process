@@ -99,6 +99,18 @@ EOC`;
 }
 
 ######################################################
+# Turn a ICal string (any TZ) to a human string, local TZ
+# TZ="Australia/Brisbane" 20180320T200000Z => Tue 20 March 12:00
+sub ical2local {
+    my ($ical) = @_;
+
+    my $dt = DateTime::Format::ICal->parse_datetime($ical);
+    $dt->set_time_zone('local');
+    return $dt->strftime("%a %d %B %H:%M");
+}
+
+
+######################################################
 sub ics_display {
     my ($data) = @_;
 
@@ -106,11 +118,9 @@ sub ics_display {
     foreach my $entry (@{$ical->entries}) {
         my $start = $entry->property('dtstart');
         next unless defined $start;
-        $start = DateTime::Format::ICal->parse_datetime($start->[0]->value);
-        $start = $start->strftime("%a %d %B %H:%M");
+        $start = ical2local($start->[0]->value);
         my $end = $entry->property('dtend');
-        $end = DateTime::Format::ICal->parse_datetime($end->[0]->value);
-        $end = $end->strftime("%a %d %B %H:%M");
+        $end = ical2local($end->[0]->value);
 
         my $organiser = defined $entry->property('organiser') ? $entry->property('organizer')->[0]->value : "";
         my $location = defined $entry->property('location') ? $entry->property('location')->[0]->value : "";
