@@ -93,15 +93,23 @@ sub ics_split {
             chop $data;
             $data =~ /^UID:(.*)/m;
             my $uid = $1;
+
+            # Add an UID if there isn't one
+            my $ug = new Data::UUID;
             if (defined $uid) {
                 chop $uid;
             } else {
-                my $ug = new Data::UUID;
                 $uid = $ug->create_str();
                 $data .= "\nUID: $uid\n";
             }
 
-            my $filename = "/tmp/$uid.ics";
+            # Outlook seems to sometimes produce several
+            # events with the same UID (what's 'U' in UID
+            # for again?), but I need my files
+            # to really be unique...
+            my $f_uid = $ug->create_str();
+
+            my $filename = "/tmp/$f_uid.ics";
             open my $fh, "> $filename" or die "$filename: $!\n";
             $cnt++;
 
@@ -165,6 +173,5 @@ EOC
     );
         unlink $f or die "$f: $!\n";
     }
-
 }
 
