@@ -138,7 +138,7 @@ sub cadaver_cmd
 
     my $out = `cadaver $oc_server/remote.php/caldav/calendars/$oc_user/$param_calendar <<EOC
     $cmd`;
-    warn $out if $verbose or $out =~ /400/; # Owncloud fails with 400 bad request
+    warn $out if $verbose or $out =~ /[45]00/; # Owncloud fails with 400 bad request or 500 internal error
 }
 
 ######################################################
