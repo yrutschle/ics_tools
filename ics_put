@@ -100,7 +100,7 @@ sub ics_split {
                 chop $uid;
             } else {
                 $uid = $ug->create_str();
-                $data .= "\nUID: $uid\n";
+                $data .= "\nUID: $uid";
             }
 
             # Outlook seems to sometimes produce several
@@ -125,6 +125,20 @@ EOF
             push @out, $filename;
             $data = "";
         } else {
+            # Fix date if producer didn't follow the standard
+            # yyyy-mm-ddThh:mm:ss.000000 =>
+            # yyyymmddThhmmss
+            if (/DTSTART:(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/) {
+                warn "fixing date  DTSTART:$1$2$3T$4$5$6\n";
+                $_ = "DTSTART:$1$2$3T$4$5$6";
+            }
+            if (/DTEND:(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/) {
+                warn "fixing date  DTSTART:$1$2$3T$4$5$6\n";
+                $_ = "DTEND:$1$2$3T$4$5$6";
+            }
+
+
+
             $data .= "$_\n";
         }
     }
