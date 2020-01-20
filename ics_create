@@ -75,6 +75,9 @@ if (defined $param_end) {
     $ical_end = prompt_date "Event end date (dd/mm/yy hh:mm): ";
 }
 
+die "Begin date illegal\n" unless defined $ical_begin;
+die "End date illegal\n" unless defined $ical_end;
+
 if (not defined $param_subject) {
     print STDERR "Subject: ";
     $param_subject = <>;
