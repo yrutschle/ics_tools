@@ -122,7 +122,7 @@ sub ics_display {
         my $end = $entry->property('dtend');
         $end = ical2local($end->[0]->value);
 
-        my $organiser = defined $entry->property('organiser') ? $entry->property('organizer')->[0]->value : "";
+        my $organiser = defined $entry->property('organizer') ? $entry->property('organizer')->[0]->value : "";
         my $location = defined $entry->property('location') ? $entry->property('location')->[0]->value : "";
         my $attendees = $entry->property('attendee'); 
         my $attendee = join "\n\t  ", map { $_->value } @$attendees;
