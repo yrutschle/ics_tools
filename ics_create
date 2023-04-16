@@ -103,11 +103,13 @@ my $ug = Data::UUID->new;
 my $ical = Data::ICal->new();
 use Data::ICal::Entry::Event;
 my $event = Data::ICal::Entry::Event->new();
+my $stamp = DateTime::Format::ICal->format_datetime(DateTime->now);
 $event->add_properties(
     summary => $param_subject,
     description => $description,
     dtstart => $ical_begin,
     dtend => $ical_end,
+    dtstamp => $stamp,
     location => $param_location,
     uid => $ug->to_string($ug->create()),
 );
